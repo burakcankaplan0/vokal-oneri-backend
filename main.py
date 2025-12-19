@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, HttpUrl
 from typing import List, Optional, Dict, Any
 import requests
@@ -145,14 +145,19 @@ def health():
 
 
 @app.post("/analyze")
-def analyze(req: AnalyzeRequest):
+def analyze(req: AnalyzeRequest, x_api_key: str = Header(default="", alias="X-API-KEY")):
+    expected = os.getenv("API_KEY", "").strip()
+    if not expected:
+        raise HTTPException(status_code=500, detail="Server misconfigured: API_KEY is not set")
+    if x_api_key != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     temp_path = None
     try:
         # 1) download audio to file
         temp_path = download_to_temp_file(str(req.audio_url))
 
         # 2) load audio
-        # sr: 22050 is fine for pitch; mono for simplicity
         try:
             y, sr = librosa.load(temp_path, sr=22050, mono=True)
         except Exception as e:
@@ -161,7 +166,7 @@ def analyze(req: AnalyzeRequest):
                 detail=f"Audio decode failed. Ensure ffmpeg is installed in Docker. Error: {e}",
             )
 
-        if y is None or len(y) < sr * 2:  # < 2 seconds
+        if y is None or len(y) < sr * 2:
             raise HTTPException(status_code=400, detail="Audio too short")
 
         # 3) estimate user range
@@ -180,7 +185,6 @@ def analyze(req: AnalyzeRequest):
 
         scored.sort(key=lambda x: x[0], reverse=True)
 
-        # free: 1 recommendation; premium: top 10
         k = 10 if req.user_is_premium else 1
         best = scored[:k]
 
