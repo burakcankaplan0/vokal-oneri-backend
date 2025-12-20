@@ -9,6 +9,7 @@ import numpy as np
 import librosa
 
 app = FastAPI(title="Vocal Match Backend", version="0.1.0")
+print(f"API_KEY present: {bool(os.getenv('API_KEY', '').strip())}")
 
 
 # -----------------------------
